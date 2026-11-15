@@ -22,7 +22,7 @@ RunGate provides two capabilities under a unified DevPass token (`DEVPASS_TOKEN`
 
 - **Base URL:** `https://gateway.rungate.ru/v1`
 - **Auth header:** `Authorization: Bearer $DEVPASS_TOKEN`
-- **Compatible models:** `claude-3-7-sonnet`, `claude-3-5-sonnet`, `gpt-4o`, `gpt-4o-mini`, `deepseek-v3`, `deepseek-r1`, `gemini-2.5-pro`, `gemini-2.5-flash`.
+- **Compatible models:** `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-haiku-5-5`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gemini-4-argon`, `gemini-3.8-flash`, `deepseek-chat`, `deepseek-v4.1-flash`, `deepseek-v4-pro`, `qwen4-max`, `kimi-for-coding`, `glm-5.3`.
 
 ### JavaScript / TypeScript (OpenAI SDK)
 
@@ -53,7 +53,7 @@ client = OpenAI(
 curl https://gateway.rungate.ru/v1/chat/completions \
   -H "Authorization: Bearer $DEVPASS_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"model": "claude-3-7-sonnet", "messages": [{"role": "user", "content": "Hello!"}]}'
+  -d '{"model": "claude-sonnet-5-5", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
 ## Smart DNS (DoH)

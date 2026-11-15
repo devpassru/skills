@@ -59,6 +59,7 @@ If the `devpass` MCP server is connected, call `devpass_status` to inspect the a
 | **RunPort** | Reverse SSH tunnels to expose `localhost` over HTTPS | `srv.runport.ru:2222` |
 | **Adopto** | Behavioral event tracking & email sequences | `https://api.adopto.ru` |
 | **Answero** | AI + Telegram support chat widget | `https://answero.ru` |
+| **Rekuro** | Payment orchestration, recurring billing & T-Bank acquiring | `https://api.rekuro.ru` |
 
 ## Common Pitfalls
 

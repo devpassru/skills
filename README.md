@@ -22,6 +22,7 @@ npx skills add devpassru/skills --skill runping
 npx skills add devpassru/skills --skill runport
 npx skills add devpassru/skills --skill adopto
 npx skills add devpassru/skills --skill answero
+npx skills add devpassru/skills --skill rekuro
 npx skills add devpassru/skills --skill devpass
 ```
 
@@ -34,9 +35,10 @@ npx skills add devpassru/skills --skill devpass
 | [`rundeploy`](skills/rundeploy/SKILL.md) | **RunDeploy** | Package builds (`.zip`/`.tar.gz`), deploy atomically, manage custom domains & encrypted env vars |
 | [`rungate`](skills/rungate/SKILL.md) | **RunGate** | Configure OpenAI-compatible AI Gateway (`gateway.rungate.ru/v1`) and Smart DNS (DoH) |
 | [`runping`](skills/runping/SKILL.md) | **RunPing** | Set up HTTP(S)/Keyword/JSON/TCP/SSL monitors and public status pages (`/s/:slug`) |
-| [`runport`](skills/runport/SKILL.md) | **RunPort** | Expose `localhost` over HTTPS via reverse SSH tunnels and visual client review mode |
+| [`runport`](skills/runport/SKILL.md) | **RunPort** | Expose `localhost` over HTTPS via reverse SSH tunnels and visual client review mode (`runport` — бывший `tunnelhunt`) |
 | [`adopto`](skills/adopto/SKILL.md) | **Adopto** | Sync user profiles (`PUT /v1/users/:userId`) and track lifecycle events (`POST /v1/events`) |
 | [`answero`](skills/answero/SKILL.md) | **Answero** | Embed the AI + Telegram support chat widget and manage FAQ knowledge bases |
+| [`rekuro`](skills/rekuro/SKILL.md) | **Rekuro** | Integrate payment orchestration, T-Bank recurring billing, promo codes, and Rekuro MCP (`/v1/mcp`) |
 
 ## Using with DevPass MCP
 
