@@ -1,43 +1,44 @@
 ---
 name: rungate
-description: "Configure RunGate AI Gateway (OpenAI-compatible proxy at https://gateway.rungate.ru/v1 for Claude, GPT-4o, DeepSeek, and Gemini) and RunGate Smart DNS (DoH at https://dns.rungate.ru/dns-query). Use when integrating LLM SDKs via RunGate or configuring DNS-over-HTTPS for developer tools without VPN."
+description: "Expert guide for RunGate AI Gateway (gateway.rungate.ru/v1) and Smart DNS (dns.rungate.ru). Use when choosing between AI Gateway and Smart DNS, integrating OpenAI/Python/TS SDKs with ruble billing, selecting models (Claude, GPT, Gemini, DeepSeek, Qwen, Kimi), setting up DoH/DoT on macOS, Windows, Linux, iOS, Android, or routers without VPN, or debugging DNS/gateway issues."
 license: MIT
 ---
 
-# RunGate AI Gateway & Smart DNS
+# RunGate AI Gateway & Smart DNS Expert
 
-## Overview
+You are an expert on **RunGate** (`https://rungate.ru`), which provides two distinct tools for accessing global AI APIs and developer services without VPN:
 
-RunGate provides two capabilities under a unified DevPass token (`DEVPASS_TOKEN`):
-1. **AI Gateway (`https://gateway.rungate.ru/v1`):** OpenAI-compatible HTTP proxy for Claude, GPT-4o, DeepSeek, and Gemini without VPN.
-2. **Smart DNS (`https://dns.rungate.ru/dns-query`):** DNS-over-HTTPS (DoH) for accessing AI APIs and developer tools natively.
+## 1. AI Gateway vs. Smart DNS — Which One Does the User Need?
 
-## When to Use
+Diagnose the user's goal first:
 
-- Configuring OpenAI JS/TS or Python SDKs to route requests through RunGate AI Gateway.
-- Calling Claude, GPT-4o, DeepSeek, or Gemini models using `DEVPASS_TOKEN`.
-- Setting up RunGate Smart DNS (DoH) on macOS, Windows, Linux, iOS, Android, or routers.
+| User Need | Use | Why |
+| :--- | :--- | :--- |
+| **Build an app, bot, or script calling LLMs** | **AI Gateway** (`https://gateway.rungate.ru/v1`) | Single OpenAI-compatible API, ruble top-up via DevPass ID, per-key spending caps (`limitRub`), token/cost telemetry |
+| **Use Cursor, Copilot, Antigravity, Claude Desktop, ChatGPT Web, or native Anthropic SDK** | **Smart DNS** (`https://dns.rungate.ru/dns-query`) | Zero-TLS-decryption DoH + SNI proxy routes only AI domains through `88.218.171.12` while Russian banks, Gosuslugi, and local sites go direct |
+| **Both** | Configure both | Gateway for production backend code; Smart DNS on dev machine/router for IDE and browser tools |
 
-## AI Gateway Integration
+## 2. AI Gateway (`https://gateway.rungate.ru/v1`)
 
-- **Control Plane (`https://app.rungate.ru/api/*`):** Authenticated with `Authorization: Bearer $DEVPASS_TOKEN` (`dp_live_...`). Use it (or `rungate_create_gateway_key` in MCP) to create a Gateway API key (`sk-...`).
-- **Gateway Base URL:** `https://gateway.rungate.ru/v1`
-- **Auth header:** `Authorization: Bearer $RUNGATE_GATEWAY_KEY` (the `sk-...` key created via RunGate API / `rungate_create_gateway_key`)
-- **Compatible models:** `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-haiku-5-5`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gemini-4-argon`, `gemini-3.8-flash`, `deepseek-chat`, `deepseek-v4.1-flash`, `deepseek-v4-pro`, `qwen4-max`, `kimi-for-coding`, `glm-5.3`.
+### Auth & Billing Model
+- **Control Plane (`https://app.rungate.ru/api/*`):** Uses `DEVPASS_TOKEN` (`dp_live_...`) to manage keys and check billing.
+- **Inference Plane (`https://gateway.rungate.ru/v1`):** Uses a **`sk-...` Gateway key** (48 hex chars), created via `rungate_create_gateway_key` or `POST /api/gateway/keys` with optional `limitRub`. **Never** pass `dp_live_...` to the gateway or embed `sk-...` in browser bundles.
+- **Billing:** Pay-as-you-go in rubles (`1 RUB = 5,000 Quota`). Top up via DevPass ID (`https://id.devpass.ru`, min 100 RUB). Streaming (`stream: true` SSE) is supported across all models.
 
-### JavaScript / TypeScript (OpenAI SDK)
+### Model Selection Matrix (Configured Models)
+- **Flagship reasoning & coding:** `claude-opus-5-5` (600/3000 RUB per 1M in/out, 1M ctx), `claude-sonnet-5-5` (350/1750 RUB, 1M), `gpt-6.1-sol` (300/1500 RUB, 1M), `gemini-4-argon` (300/1500 RUB, 1M)
+- **Fast & cost-effective:** `claude-haiku-5-5` (95/475 RUB, 1M), `gpt-6.1-terra` (150/750 RUB, 1M), `gemini-3.8-flash` (110/550 RUB, 1M)
+- **Budget / high-volume / coding:** `deepseek-v4.1-flash` (25/85 RUB, 1M), `deepseek-chat` (45/135 RUB, 128k), `deepseek-v4-pro` (65/220 RUB, 1M), `glm-5.3` (90/360 RUB, 1M), `kimi-for-coding` (180/900 RUB, 1M), `qwen4-max` (220/660 RUB, 1M)
 
+### SDK Integration
 ```ts
 import OpenAI from "openai";
 
 const client = new OpenAI({
-  apiKey: process.env.RUNGATE_GATEWAY_KEY,
+  apiKey: process.env.RUNGATE_GATEWAY_KEY, // sk-...
   baseURL: "https://gateway.rungate.ru/v1",
 });
 ```
-
-### Python (OpenAI SDK)
-
 ```python
 import os
 from openai import OpenAI
@@ -47,32 +48,38 @@ client = OpenAI(
     base_url="https://gateway.rungate.ru/v1",
 )
 ```
+> **Note:** OpenAI SDK works 100% for all models (including Claude) via `/v1/chat/completions`. If the user specifically needs the **official Anthropic SDK** talking directly to `api.anthropic.com`, use **Smart DNS** instead.
 
-### cURL
+## 3. Smart DNS (DoH + Zero-TLS-Decryption SNI Proxy)
 
-```bash
-curl https://gateway.rungate.ru/v1/chat/completions \
-  -H "Authorization: Bearer $RUNGATE_GATEWAY_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "claude-sonnet-5-5", "messages": [{"role": "user", "content": "Hello!"}]}'
-```
+### How It Works
+1. `ai-doh-server` (`dns.rungate.ru`) validates the user's profile `<token>` and registers the client's IPv4 in the dynamic allowlist (`88.218.171.12`).
+2. Only AI/dev domains (OpenAI/ChatGPT/Sora, Anthropic/Claude, GitHub Copilot, Google Gemini/AI Studio/Antigravity, Cursor/Anysphere, v0, Groq, OpenRouter, Mistral, DeepSeek, Perplexity, xAI, Fireworks, Together, Replicate) resolve to the SNI proxy; everything else resolves normally via public DNS.
+3. `ai-sni-proxy` forwards TLS based on `ClientHello` SNI—**no MITM certificates, no TLS decryption**.
+4. **Device Limits:** 24h free trial (1 profile via `POST /api/dns/activate-trial`), Developer = 1 profile, Power = 5, Team = 20.
 
-## Smart DNS (DoH)
+### OS & Router Setup
+- **macOS / iOS (Recommended):** Download the `.mobileconfig` profile from `https://dns.rungate.ru/mobileconfig/<token>` and install under *System Settings -> VPN & Device Management* (or use `DNSSwitcher` on macOS).
+- **Windows 11:** Network Adapter -> IPv4 DNS Manual -> Encrypted only (DNS over HTTPS) -> template `https://dns.rungate.ru/dns-query/<token>`.
+- **Linux (`systemd-resolved`):** Set `DNS=185.130.44.155#dns.rungate.ru` and `DNSOverTLS=yes` in `/etc/systemd/resolved.conf`, then `sudo systemctl restart systemd-resolved` (or run `cloudflared` DoH proxy).
+- **Android:** Settings -> Network -> Private DNS -> Hostname: `dns.rungate.ru`.
+- **Routers (Keenetic / OpenWrt):** Add DoH upstream `https://dns.rungate.ru/dns-query/<token>` to cover the whole network.
+- **Browsers (Chrome/Edge/Brave/Firefox):** Security -> Use secure DNS -> Custom -> `https://dns.rungate.ru/dns-query/<token>`.
 
-- **DoH URL:** `https://dns.rungate.ru/dns-query`
-- **Android Private DNS hostname:** `dns.rungate.ru`
-- **macOS profile:** `https://rungate.ru/download/macos.mobileconfig`
+## 4. Verification & Troubleshooting
 
-## MCP Tools (`@devpass/mcp`)
-
-- `rungate_list_gateway_keys` — list RunGate AI Gateway API keys (`DEVPASS_TOKEN`).
-- `rungate_create_gateway_key` — create a new `sk-...` Gateway key (`DEVPASS_TOKEN`).
-- `rungate_list_dns_profiles` — list Smart DNS (DoH) profiles (`DEVPASS_TOKEN`).
-- `rungate_create_dns_profile` — create a new Smart DNS (DoH) profile (`DEVPASS_TOKEN`).
-- `rungate_get_billing` — get AI Gateway balance, usage, and subscription summary (`DEVPASS_TOKEN`).
-- `rungate_get_gateway_config` — returns active `baseUrl`, compatible models, and SDK snippets.
-- `rungate_check_dns` — returns OS-specific Smart DNS setup steps (`macos`, `windows`, `linux`, `ios`, `android`, `router`).
-
-## Common Pitfalls
-
-- **Exposing `DEVPASS_TOKEN` in client-side code:** Only call `gateway.rungate.ru/v1` from backend services, scripts, or local dev tools—never embed `DEVPASS_TOKEN` in browser bundles.
+- **Check DoH server health:** `curl -i https://dns.rungate.ru/health` (expect `200 OK`, `healthy`).
+- **Verify DoH resolution for an AI domain:**
+  ```bash
+  curl -H "accept: application/dns-message" \
+    "https://dns.rungate.ru/dns-query/<token>?dns=q80BAAABAAAAAAAAA3d3dwdvcGVuYWkDY29tAAABAAE"
+  ```
+- **Test Gateway key & model:**
+  ```bash
+  curl https://gateway.rungate.ru/v1/chat/completions \
+    -H "Authorization: Bearer $RUNGATE_GATEWAY_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"model": "claude-sonnet-5-5", "messages": [{"role": "user", "content": "ping"}]}'
+  ```
+- **Smart DNS stops working after IP change / Wi-Fi switch:** The client must send a DoH query through `dns.rungate.ru` so `ai-doh-server` refreshes the client IP in the SNI proxy allowlist. Flush local DNS cache (`sudo dscacheutil -flushcache` on macOS) or toggle Wi-Fi if stale A records are cached.
+- **MCP tools (`@devpass/mcp`):** `rungate_get_gateway_config`, `rungate_list_gateway_keys`, `rungate_create_gateway_key`, `rungate_get_billing`, `rungate_list_dns_profiles`, `rungate_create_dns_profile`, `rungate_check_dns`.

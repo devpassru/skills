@@ -1,63 +1,52 @@
 ---
 name: rekuro
-description: "Integrate Rekuro payment orchestration and recurring billing (https://api.rekuro.ru) with T-Bank acquiring, subscriptions, promo codes, webhooks, and the built-in Rekuro MCP server (/v1/mcp). Use when adding payments, recurring subscriptions, checkout links, promo codes, or payment/webhook debugging via Rekuro."
+description: "Payment orchestration & recurring billing expert for Rekuro (api.rekuro.ru) with T-Bank acquiring. Use when designing one-time checkouts, recurring card-bound subscriptions (trials, grace periods, Smart Dunning, pause/resume/cancel, add-ons), promo codes, 54-FZ receipts, Outbox webhook verification (X-Rekuro-Signature), or debugging payments/webhooks via Rekuro MCP (/v1/mcp)."
 license: MIT
 ---
 
-# Rekuro Payment Orchestration & Recurring Billing
+# Rekuro Payment Orchestration & Billing Expert
 
-## Overview
+You are an expert on **Rekuro** (`https://api.rekuro.ru`), a multi-tenant payment orchestration and recurring billing platform for Russia & CIS with T-Bank acquiring. Help the user design resilient billing flows, enforce strict financial invariants, handle dunning/webhooks properly, and debug failed charges.
 
-Rekuro (`https://api.rekuro.ru`) is a multi-tenant payment orchestration and recurring billing platform for Russia & CIS with T-Bank acquiring, subscription scheduling, promo codes, reliable Outbox webhooks, and a built-in MCP server.
+## 1. Non-Negotiable Financial & API Invariants
 
-## When to Use
+1. **Integer kopecks only:** Every monetary field (`amount`, `original_amount`, `discount_amount`, `min_order_amount`) is an **integer in kopecks** (`99000` = 990.00 RUB). Never pass floats or rubles.
+2. **Always send `Idempotency-Key`:** On all mutating payment/charge requests (`POST /v1/payments`, retries, cancellations), send `Idempotency-Key` (max 255 chars, 24h Redis cache).
+   - Concurrent duplicate while in-flight returns `409 CONCURRENT_REQUEST`.
+   - Replayed completed response includes `Idempotency-Replayed: true`.
+3. **Server-side only:** Never embed `REKURO_API_KEY` in browser/TMA frontend bundles. Call Rekuro from your backend or MCP client.
+4. **RFC 7807 / 9457 Errors:** All errors return `Content-Type: application/problem+json` with `type`, `title`, `status`, `detail`, `code`, `trace_id`, and `invalid_params`. Log `trace_id` for support/debugging.
 
-- Creating one-time checkout links or recurring card-bound subscriptions via Rekuro REST API or MCP.
-- Managing billing plans, customers, subscriptions (`cancel`, `pause`, `resume`, `retry-charge`), and promo codes.
-- Debugging failed payments, inspecting inbound/outbound webhook deliveries, or replaying failed Outbox webhooks.
+## 2. Designing Your Billing Flow
 
-## REST API (`https://api.rekuro.ru`)
+### One-Time Checkout (`POST /v1/payments`)
+- Pass `amount` (integer kopecks), `orderId`, `description`, and customer email/phone (Rekuro generates 54-FZ fiscal `receipt` data when email/phone is provided).
+- Optionally apply a validated promo code (`POST /v1/promo-codes/validate` first to show discounted price in UI).
+- Redirect the user to the returned `payment_url` from T-Bank `/v2/Init`.
 
-- **Base URL:** `https://api.rekuro.ru`
-- **Auth header:** `Authorization: Bearer $REKURO_API_KEY` (tenant API key)
-- **Amounts:** All monetary amounts are integers in **kopecks** (e.g. `99000` = 990.00 RUB).
-- **Errors:** Returned in RFC 7807 Problem Details format (`application/problem+json`).
+### Recurring Subscriptions (`POST /v1/subscriptions`)
+- **Plans (`POST /v1/plans`):** Define `amount` (kopecks), `interval`, `trial_days`, and `grace_days`.
+  - With `trial_days > 0`, subscription starts in `trialing` without an immediate charge.
+  - First successful charge passes `recurrent: 'Y'` to T-Bank and stores the card's `rebillId` in `payment_methods`.
+- **Smart Dunning & Grace Period (`hasAccess`):**
+  - On renewal failure, Rekuro runs up to **4 automatic retries** on schedule `[1, 2, 2, 2]` days (+1d, +3d, +5d, +7d) for **recoverable** errors (`INSUFFICIENT_FUNDS`, `LIMIT_EXCEEDED`, `SYSTEM_ERROR`).
+  - **Terminal** errors (expired/blocked card) stop retries immediately (`terminal_failed`).
+  - While within `current_period_end + grace_days`, the subscription is `past_due` but **`hasAccess = true`**—do not immediately lock out paying users on transient bank declines! After retries or grace period expire, status becomes `unpaid` (`hasAccess = false`).
+- **Lifecycle operations:**
+  - `POST /v1/subscriptions/:id/cancel` (immediate or `cancel_at_period_end: true`)
+  - `POST /v1/subscriptions/:id/pause` / `resume`
+  - `POST /v1/subscriptions/:id/retry-charge` (manual dunning trigger for `past_due`)
+  - `PATCH /v1/subscriptions/:id/price` & `/items` (add-ons)
+  - `POST /v1/plans/:id/migrate-price` (migrate active subscribers to a new plan price)
 
-### Key Endpoints
+### Promo Codes (`/v1/promo-codes`)
+- Supports `percentage` or `fixed_amount` (kopecks), duration `once` | `repeating` (`duration_in_cycles`) | `forever`, plus `max_redemptions`, `expires_at`, `min_order_amount`, and plan restrictions.
 
-- **Customers:**
-  - `POST /v1/customers` — create a customer
-  - `GET /v1/customers/{id}` — get customer details
-- **Plans:**
-  - `POST /v1/plans` — create a billing plan
-  - `GET /v1/plans` — list plans
-  - `GET /v1/plans/{id}` — get plan details
-  - `PATCH /v1/plans/{id}` — update plan
-  - `GET /v1/plans/{id}/price-history` — get plan price history
-  - `POST /v1/plans/{id}/migrate-price` — migrate active subscriptions to new price
-- **Payments:**
-  - `POST /v1/payments` — initialize a payment / checkout session (supports `Idempotency-Key`)
-  - `GET /v1/payments` — list payments
-  - `GET /v1/payments/{id}` — get payment details
-  - `POST /v1/payments/{id}/cancel` — cancel or refund a payment
-- **Subscriptions:**
-  - `POST /v1/subscriptions` — create a subscription
-  - `GET /v1/subscriptions` — list subscriptions
-  - `GET /v1/subscriptions/{id}` — get subscription details
-  - `POST /v1/subscriptions/{id}/cancel` — cancel subscription
-  - `POST /v1/subscriptions/{id}/pause` — pause subscription
-  - `POST /v1/subscriptions/{id}/resume` — resume paused subscription
-  - `POST /v1/subscriptions/{id}/retry-charge` — manually retry a `past_due` charge
-  - `PATCH /v1/subscriptions/{id}/price` — update subscription price
-- **Promo Codes:**
-  - `POST /v1/promo-codes` — create a promo code
-  - `GET /v1/promo-codes` — list promo codes
-  - `GET /v1/promo-codes/{id}` — get promo code details
-  - `PATCH /v1/promo-codes/{id}` — update promo code
-  - `DELETE /v1/promo-codes/{id}` — deactivate/delete promo code
-  - `POST /v1/promo-codes/validate` — validate a promo code and calculate discount
+## 3. Outbound Webhooks (Outbox Pattern)
 
-### Example: Create Payment Session
+Rekuro guarantees reliable webhook delivery via PostgreSQL Outbox + BullMQ (`5000ms` timeout, exponential backoff `[10s, 1m, 5m, 30m, 2h, 6h, 24h]` up to 5 attempts, plus a stale-webhook sweeper):
+- **Verify `X-Rekuro-Signature`:** Compute HMAC-SHA256 of the raw JSON request body using your `tenant.webhookSecret` and compare with `timingSafeEqual`.
+- **Always respond quickly (`200 OK`)** and process business logic idempotently using event IDs (`payment.succeeded`, `subscription.renewed`, `subscription.paused`, `subscription.canceled`, etc.).
 
 ```ts
 const res = await fetch("https://api.rekuro.ru/v1/payments", {
@@ -68,7 +57,7 @@ const res = await fetch("https://api.rekuro.ru/v1/payments", {
     "Idempotency-Key": crypto.randomUUID(),
   },
   body: JSON.stringify({
-    amount: 99000, // 990.00 RUB in kopecks
+    amount: 99000, // 990.00 RUB in integer kopecks
     orderId: `ord_${Date.now()}`,
     description: "Pro Plan (1 month)",
     customerEmail: "user@example.com",
@@ -76,23 +65,11 @@ const res = await fetch("https://api.rekuro.ru/v1/payments", {
 });
 ```
 
-## Built-in MCP Server (`/v1/mcp`)
+## 4. Built-in MCP Server (`/v1/mcp`) — Payment & Webhook Diagnostics
 
-Rekuro exposes its own MCP server at `https://api.rekuro.ru/v1/mcp` (authenticated via `Authorization: Bearer $REKURO_API_KEY`).
-
-Available MCP tools:
-- `rekuro_ping` — check Rekuro MCP server availability.
-- `create_payment_link` — create a payment session and return a checkout URL (one-time or plan subscription with card binding).
-- `get_payment_debug` — deep diagnostics for a payment by ID or `OrderId` (status transitions, bank error decoding, webhook timeline).
-- `inspect_webhook` — inspect inbound bank webhooks or outbound SaaS webhook deliveries (raw body, headers, signature status, retry history).
-- `retry_failed_webhook` — force-retry an outbound webhook delivery via Outbox.
-- `cancel_subscription` — cancel a subscription with reason, audit log, and `subscription.canceled` Outbox event.
-- `create_promo_code` — issue a new promo code (including personal discount codes).
-- `validate_promo_code` — validate a promo code for an amount, plan, and customer and compute the discount.
-- `retry_subscription_charge` — manually retry charging a `past_due` subscription (Smart Dunning).
-
-## Common Pitfalls
-
-- **Passing rubles instead of kopecks:** Always pass integer kopecks (`99000` for 990 RUB), never floating-point rubles.
-- **Missing `Idempotency-Key`:** Always send an `Idempotency-Key` header on `POST /v1/payments` and charge retries to prevent duplicate charges.
-- **Exposing tenant API keys in frontend code:** Never embed `REKURO_API_KEY` in browser bundles; call Rekuro only from backend services or MCP clients.
+Rekuro exposes its own SSE MCP server at `https://api.rekuro.ru/v1/mcp` (`Authorization: Bearer $REKURO_API_KEY`), separate from `@devpass/mcp`. Use these tools to diagnose issues fast:
+- `rekuro_ping` — verify MCP connectivity.
+- `get_payment_debug` — inspect status transitions, decoded T-Bank error codes, and webhook timeline by payment ID or `OrderId`.
+- `inspect_webhook` — view raw body, headers, signature status, and retry history of inbound bank or outbound SaaS webhooks.
+- `retry_failed_webhook` — force-retry a failed Outbox webhook delivery.
+- `create_payment_link`, `cancel_subscription`, `retry_subscription_charge`, `create_promo_code`, `validate_promo_code`.
