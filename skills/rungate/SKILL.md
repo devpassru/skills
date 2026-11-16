@@ -20,8 +20,9 @@ RunGate provides two capabilities under a unified DevPass token (`DEVPASS_TOKEN`
 
 ## AI Gateway Integration
 
-- **Base URL:** `https://gateway.rungate.ru/v1`
-- **Auth header:** `Authorization: Bearer $DEVPASS_TOKEN`
+- **Control Plane (`https://app.rungate.ru/api/*`):** Authenticated with `Authorization: Bearer $DEVPASS_TOKEN` (`dp_live_...`). Use it (or `rungate_create_gateway_key` in MCP) to create a Gateway API key (`sk-...`).
+- **Gateway Base URL:** `https://gateway.rungate.ru/v1`
+- **Auth header:** `Authorization: Bearer $RUNGATE_GATEWAY_KEY` (the `sk-...` key created via RunGate API / `rungate_create_gateway_key`)
 - **Compatible models:** `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-haiku-5-5`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gemini-4-argon`, `gemini-3.8-flash`, `deepseek-chat`, `deepseek-v4.1-flash`, `deepseek-v4-pro`, `qwen4-max`, `kimi-for-coding`, `glm-5.3`.
 
 ### JavaScript / TypeScript (OpenAI SDK)
@@ -30,7 +31,7 @@ RunGate provides two capabilities under a unified DevPass token (`DEVPASS_TOKEN`
 import OpenAI from "openai";
 
 const client = new OpenAI({
-  apiKey: process.env.DEVPASS_TOKEN,
+  apiKey: process.env.RUNGATE_GATEWAY_KEY,
   baseURL: "https://gateway.rungate.ru/v1",
 });
 ```
@@ -42,7 +43,7 @@ import os
 from openai import OpenAI
 
 client = OpenAI(
-    api_key=os.environ["DEVPASS_TOKEN"],
+    api_key=os.environ["RUNGATE_GATEWAY_KEY"],
     base_url="https://gateway.rungate.ru/v1",
 )
 ```
@@ -51,7 +52,7 @@ client = OpenAI(
 
 ```bash
 curl https://gateway.rungate.ru/v1/chat/completions \
-  -H "Authorization: Bearer $DEVPASS_TOKEN" \
+  -H "Authorization: Bearer $RUNGATE_GATEWAY_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model": "claude-sonnet-5-5", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
@@ -64,7 +65,12 @@ curl https://gateway.rungate.ru/v1/chat/completions \
 
 ## MCP Tools (`@devpass/mcp`)
 
-- `rungate_get_gateway_config` — returns active `baseUrl`, masked token check, compatible models, and SDK snippets.
+- `rungate_list_gateway_keys` — list RunGate AI Gateway API keys (`DEVPASS_TOKEN`).
+- `rungate_create_gateway_key` — create a new `sk-...` Gateway key (`DEVPASS_TOKEN`).
+- `rungate_list_dns_profiles` — list Smart DNS (DoH) profiles (`DEVPASS_TOKEN`).
+- `rungate_create_dns_profile` — create a new Smart DNS (DoH) profile (`DEVPASS_TOKEN`).
+- `rungate_get_billing` — get AI Gateway balance, usage, and subscription summary (`DEVPASS_TOKEN`).
+- `rungate_get_gateway_config` — returns active `baseUrl`, compatible models, and SDK snippets.
 - `rungate_check_dns` — returns OS-specific Smart DNS setup steps (`macos`, `windows`, `linux`, `ios`, `android`, `router`).
 
 ## Common Pitfalls
